@@ -49,9 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/ajuda - Relembra os comandos e como usar o bot\n\n"
         "Quando quiser, é só me mandar uma transação ou usar um dos comandos acima. Vamos juntos cuidar bem do seu dinheiro! 💰"
     )   
-    await update.message.reply_html(
-        rf"Olá, {user.mention_html()}! Seja bem-vindo(a).",
-    )
     await update.message.reply_text(start_message)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
