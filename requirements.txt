@@ -1,0 +1,6 @@
+python-telegram-bot
+sqlalchemy
+python-dotenv
+google-generativeai # Adicionar
+dateparser
+python-dateutil
