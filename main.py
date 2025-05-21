@@ -34,7 +34,7 @@ init_db()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     start_message = (
-        f"Olá, {user.first_name}! 👋 Seja muito bem-vindo(a) ao seu Bot Financeiro Pessoal.\n\n"
+        f"Olá, {user.first_name}! 👋 Seja muito bem-vindo(a) ao seu Bot Financeiro Gasta AI.\n\n"
         "Estou aqui pra te ajudar a organizar suas finanças de um jeito simples e prático. "
         "Você pode me contar sobre suas transações usando linguagem natural, como se estivesse falando com alguém. Por exemplo:\n\n"
         "💸 'Gastei 25 reais no cinema ontem'\n"
