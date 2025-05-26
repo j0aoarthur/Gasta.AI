@@ -1,7 +1,9 @@
 import os
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, Integer, String, REAL, DateTime, Text, func, desc, asc
+from sqlalchemy import create_engine, Column, Integer, REAL, DateTime, Text, func, desc, asc
 from sqlalchemy.orm import sessionmaker, declarative_base
+from datetime import datetime, timedelta, timezone
+import calendar
 
 from dotenv import load_dotenv
 
@@ -212,10 +214,8 @@ if __name__ == "__main__":
         print("Transações de teste para estatísticas adicionadas.")
 
         # Exemplo de consulta: Total gasto em alimentação este mês
-        from datetime import datetime, timedelta, timezone
         now_utc = datetime.now(timezone.utc)
         start_of_month_utc = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        import calendar
         last_day_of_month = calendar.monthrange(now_utc.year, now_utc.month)[1]
         end_of_month_utc = now_utc.replace(day=last_day_of_month, hour=23, minute=59, second=59, microsecond=999999)
 

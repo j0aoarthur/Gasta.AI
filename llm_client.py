@@ -181,7 +181,7 @@ def get_query_params_from_natural_language(user_query: str) -> dict | None:
     Parâmetros a extrair:
     - "operacao": string - Qual é o objetivo principal? Valores possíveis: "soma_valor", "listar_transacoes", "contar_transacoes", "media_valor". Se não especificado, assuma "listar_transacoes".
     - "tipo_transacao": string - "entrada", "saída", ou null se não especificado (significando ambos os tipos).
-    - "categorias": array de strings - Lista de categorias mencionadas (ex: ["alimentação", "transporte"]). Null se não houver menção explícita.
+    - "categorias": array de strings - Lista de categorias mencionadas (ex: ["alimentação", "transporte"]).
     - "descricao_contem": array de strings - Lista de palavras-chave que devem estar na descrição da transação (ex: ["uber", "cinema", "ifood"]). Null se não houver.
     - "data_inicio": string ou null. Se o usuário especificar um período (ex: "este mês", "ano passado", "últimos 7 dias", "de 10/01 a 15/01"), interprete o *início* desse período com base na data e hora atuais UTC ({current_utc_iso}) e retorne no formato ISO 8601 (YYYY-MM-DDTHH:MM:SS). Para início de períodos, use 00:00:00 como hora padrão. Retorne null se nenhum período for especificado.
     - "data_fim": string ou null. Se o usuário especificar um período, interprete o *fim* desse período com base na data e hora atuais UTC ({current_utc_iso}) e retorne no formato ISO 8601 (YYYY-MM-DDTHH:MM:SS). Para fim de períodos, use 23:59:59 como hora padrão. Retorne null se nenhum período for especificado.
