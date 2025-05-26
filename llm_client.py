@@ -1,8 +1,7 @@
-# telegram_financial_bot/llm_client.py
+
 import os
 import json
-# Importar timedelta explicitamente
-from datetime import datetime, timezone, timedelta # <<<--- ESTA LINHA É ESSENCIAL
+from datetime import datetime, timezone, timedelta
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -17,12 +16,11 @@ if not GEMINI_API_KEY:
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Configuração para solicitar JSON do Gemini
 generation_config_json = genai.GenerationConfig(response_mime_type="application/json")
-generation_config_text = genai.GenerationConfig(response_mime_type="text/plain") # Para respostas textuais
+generation_config_text = genai.GenerationConfig(response_mime_type="text/plain")
 
 model_json = genai.GenerativeModel(LLM_MODEL_NAME, generation_config=generation_config_json)
-model_text = genai.GenerativeModel(LLM_MODEL_NAME, generation_config=generation_config_text) # Modelo para respostas em texto puro
+model_text = genai.GenerativeModel(LLM_MODEL_NAME, generation_config=generation_config_text)
 
 def get_financial_details_from_llm(text_message: str) -> dict | None:
     """
@@ -30,36 +28,24 @@ def get_financial_details_from_llm(text_message: str) -> dict | None:
     Inclui a lógica para interpretar a data/hora diretamente no LLM.
     Retorna um dicionário estruturado ou None em caso de falha.
     """
-    # Usamos UTC para o contexto do LLM para evitar ambiguidades de fuso horário.
-    # A conversão para fuso horário local será feita no bot.py para exibição.
     current_utc_time_for_llm_context = datetime.now(timezone.utc)
     current_date_for_llm_context_str = current_utc_time_for_llm_context.strftime("%Y-%m-%d")
-    current_utc_iso = current_utc_time_for_llm_context.isoformat() #-MM-DDTHH:MM:SS.ffffff+00:00
+    current_utc_iso = current_utc_time_for_llm_context.isoformat()
 
-    # --- Cálculo das datas para os exemplos DENTRO da função onde timedelta está disponível ---
-    # Isso resolve o UnboundLocalError
     try:
         yesterday_utc_date = (current_utc_time_for_llm_context.date() - timedelta(days=1)).strftime('%Y-%m-%d')
     except Exception as e:
-        # Fallback caso o cálculo falhe por algum motivo extremo (improvável)
         print(f"Erro calculando data para exemplo (yesterday): {e}")
-        yesterday_utc_date = "YYYY-MM-DD" # Placeholder, embora improvável ser necessário
+        yesterday_utc_date = "YYYY-MM-DD"
 
     try:
-        # Tenta calcular o dia 5 do mês atual. Se o mês atual for o dia 5 ou anterior, pode dar erro se calcular para o próximo mês.
-        # Uma abordagem mais robusta seria garantir que a data seja no passado ou presente.
-        # Para o propósito do EXEMPLO no prompt, podemos simplificar ou adicionar lógica mais robusta se necessário.
-        # Mantendo o cálculo simples que foi a fonte do erro anterior, apenas garantindo que timedelta está importado.
          current_month_day_5_utc_date = current_utc_time_for_llm_context.replace(day=5).strftime('%Y-%m-%d')
     except ValueError:
-         # Caso raro onde o mês atual não tem dia 5 (não aplicável na prática, mas defensivo)
          print("Erro calculando data para exemplo (dia 5 do mês).")
-         current_month_day_5_utc_date = "YYYY-MM-05" # Placeholder
+         current_month_day_5_utc_date = "YYYY-MM-05"
     except Exception as e:
         print(f"Erro inesperado calculando data para exemplo (dia 5): {e}")
-        current_month_day_5_utc_date = "YYYY-MM-05" # Placeholder
-
-    # --- Fim do cálculo das datas para exemplos ---
+        current_month_day_5_utc_date = "YYYY-MM-05"
 
 
     prompt = f"""
@@ -128,31 +114,23 @@ def get_financial_details_from_llm(text_message: str) -> dict | None:
     JSON Output:
     """
 
-    # O f-string acima agora usa variáveis calculadas (yesterday_utc_date, current_month_day_5_utc_date)
-    # que estão disponíveis na função, resolvendo o UnboundLocalError.
-    # Não precisamos mais do .format() extra aqui.
-
 
     try:
         response = model_json.generate_content(prompt)
-        # A API Gemini pode encapsular o JSON em ```json ... ```, vamos limpar isso
         cleaned_response_text = response.text.strip().removeprefix("```json").removesuffix("```").strip()
         parsed_json = json.loads(cleaned_response_text)
         
         # Validação básica do formato ISO 8601 se data_hora_inferida não for null
         if parsed_json.get("data_hora_inferida") is not None:
             try:
-                # Tenta parsear para garantir que é um formato válido antes de retornar
-                # fromisoformat lida com ou sem timezone, incluindo 'Z'.
                 datetime.fromisoformat(parsed_json["data_hora_inferida"])
             except ValueError:
                 print(f"AVISO: LLM retornou data_hora_inferida em formato inválido: {parsed_json.get('data_hora_inferida')}. Definindo como null.")
-                parsed_json["data_hora_inferida"] = None # Define como null se o formato for inválido
+                parsed_json["data_hora_inferida"] = None
 
         return parsed_json
     except json.JSONDecodeError as e:
         print(f"Erro ao decodificar JSON do Gemini (detalhes financeiros): {e}")
-        # Tenta imprimir a resposta bruta se ela existir para ajudar a depurar
         response_text = response.text if 'response' in locals() and hasattr(response, 'text') else 'N/A'
         print(f"Resposta recebida: {response_text}")
         return None
@@ -165,42 +143,34 @@ def get_query_params_from_natural_language(user_query: str) -> dict | None:
     Envia a pergunta do usuário para a API Gemini para extrair parâmetros de consulta,
     incluindo a interpretação do período diretamente no LLM.
     """
-    # Usamos UTC para o contexto do LLM para evitar ambiguidades de fuso horário.
-    # A conversão para fuso horário local será feita no bot.py para exibição.
+
     current_utc_time_for_llm_context = datetime.now(timezone.utc)
     current_date_for_llm_context_str = current_utc_time_for_llm_context.strftime("%Y-%m-%d")
-    current_utc_iso = current_utc_time_for_llm_context.isoformat() #-MM-DDTHH:MM:SS.ffffff+00:00
+    current_utc_iso = current_utc_time_for_llm_context.isoformat()
 
-    # --- Calculando as datas para os exemplos DENTRO da função ---
     try:
-        # Exemplo 1: Último mês 04 (Abril do ano atual)
         april_of_current_year_start_date = current_utc_time_for_llm_context.replace(month=4, day=1).strftime('%Y-%m-%d')
-        # Para calcular o último dia, podemos ir para o dia 1 do próximo mês e subtrair um dia
-        # Garante que funciona para meses com 30, 31, 28/29 dias
         try:
-             next_month = current_utc_time_for_llm_context.replace(month=4).date().replace(day=28) + timedelta(days=4) # Vai para o dia 28 e adiciona 4 dias
+             next_month = current_utc_time_for_llm_context.replace(month=4).date().replace(day=28) + timedelta(days=4)
              april_of_current_year_end_date = (next_month - timedelta(days=next_month.day)).strftime('%Y-%m-%d')
-        except ValueError: # Caso o mês 4 não exista (improvável)
+        except ValueError: 
              print("Erro calculando fim do mês para exemplo (Abril).")
-             april_of_current_year_end_date = "YYYY-04-30" # Placeholder
+             april_of_current_year_end_date = "YYYY-04-30" 
         except Exception as e:
              print(f"Erro inesperado calculando fim do mês para exemplo (Abril): {e}")
-             april_of_current_year_end_date = "YYYY-04-30" # Placeholder
+             april_of_current_year_end_date = "YYYY-04-30"
 
 
-        # Exemplo 2: Ano passado
+
         last_year_start_date = current_utc_time_for_llm_context.replace(year=current_utc_time_for_llm_context.year - 1, month=1, day=1).strftime('%Y-%m-%d')
         last_year_end_date = current_utc_time_for_llm_context.replace(year=current_utc_time_for_llm_context.year - 1, month=12, day=31).strftime('%Y-%m-%d')
 
     except Exception as e:
         print(f"Erro calculando datas para exemplos de query: {e}")
-        # Fallback genérico para exemplos se houver qualquer erro
         april_of_current_year_start_date = "YYYY-04-01"
         april_of_current_year_end_date = "YYYY-04-30"
         last_year_start_date = "YYYY-01-01"
         last_year_end_date = "YYYY-12-31"
-
-    # --- Fim do cálculo das datas para exemplos ---
 
 
     prompt = f"""
@@ -280,9 +250,6 @@ def get_query_params_from_natural_language(user_query: str) -> dict | None:
     JSON Output:
     """
 
-    # O f-string acima agora usa variáveis calculadas (april_of_current_year_start_date, etc.)
-    # que estão disponíveis na função.
-
 
     try:
         response = model_json.generate_content(prompt)
@@ -290,22 +257,18 @@ def get_query_params_from_natural_language(user_query: str) -> dict | None:
         parsed_json = json.loads(cleaned_response_text)
 
         # Validação básica do formato ISO 8601 para data_inicio e data_fim
-        # Adicionado o check para verificar se a chave existe antes de tentar parsear
         for key in ["data_inicio", "data_fim"]:
             if key in parsed_json and parsed_json.get(key) is not None:
                 try:
-                    # Tenta parsear para garantir que é um formato válido antes de retornar
-                    # fromisoformat lida com ou sem timezone, incluindo 'Z'.
                     datetime.fromisoformat(parsed_json[key])
                 except ValueError:
                     print(f"AVISO: LLM retornou '{key}' em formato inválido: {parsed_json.get(key)}. Definindo como null.")
-                    parsed_json[key] = None # Define como null se o formato for inválido
+                    parsed_json[key] = None
 
 
         return parsed_json
     except json.JSONDecodeError as e:
         print(f"Erro ao decodificar JSON do Gemini (parâmetros de query): {e}")
-        # Tenta imprimir a resposta bruta se ela existir para ajudar a depurar
         response_text = response.text if 'response' in locals() and hasattr(response, 'text') else 'N/A'
         print(f"Resposta recebida: {response_text}")
         return None

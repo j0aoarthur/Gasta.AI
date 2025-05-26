@@ -2,33 +2,27 @@ import os
 import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from datetime import datetime, timezone # Importado para fromisoformat
+from datetime import datetime, timezone
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup # Importar classes para botões inline
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler # Importar CallbackQueryHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
-# Mude o import de groq_client para llm_client
 from llm_client import get_financial_details_from_llm, get_query_params_from_natural_language, generate_conversational_response
 from database import SessionLocal, init_db, add_transaction, get_saldo, get_transacoes_por_tipo, query_dynamic_transactions
-from utils import format_currency # Mantenha apenas o necessário
+from utils import format_currency
 
-# Estados para a conversa de estatísticas
 ASK_STAT_QUERY, PROCESS_STAT_QUERY = range(2)
 
-# Constante para o prefixo dos dados de callback das transações - AGORA SEM UNDERSCORE INTERNO
 TRANSACTION_CALLBACK_PREFIX = "trxconfirm"
 
-# Carregar variáveis de ambiente
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Configurar logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Inicializar o banco de dados
 init_db()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -58,7 +52,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     message_text = update.message.text
     user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
-    original_message_id = update.message.message_id # Obter o ID da mensagem original
+    original_message_id = update.message.message_id
 
     logger.info(f"Recebida mensagem de {user_id} (Msg ID: {original_message_id}): '{message_text}'")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -93,29 +87,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(f"O valor informado '{valor_str}' não é válido. Por favor, verifique. ({e})")
             return
 
-        # Parse a data_hora_inferida_str SE ela não for null
         data_hora_transacao = None
         if data_hora_inferida_str:
             try:
                 data_hora_transacao = datetime.fromisoformat(data_hora_inferida_str)
-                # Se a data/hora parseada for naive (sem timezone), assumimos UTC
                 if data_hora_transacao.tzinfo is None:
                     data_hora_transacao = data_hora_transacao.replace(tzinfo=timezone.utc)
-                # Senão, já está em algum timezone, armazenamos como UTC
                 else:
                      data_hora_transacao = data_hora_transacao.astimezone(timezone.utc)
 
             except ValueError as e:
                 logger.error(f"Erro ao parsear data_hora_inferida_str '{data_hora_inferida_str}': {e}")
-                # Não enviamos mensagem aqui, apenas logamos e data_hora_transacao permanece None
         
-        # Se a data_hora_transacao não foi inferida ou parseada corretamente, usamos a hora atual
         if data_hora_transacao is None:
-             data_hora_transacao = datetime.now(timezone.utc) # Usar a hora atual UTC como fallback
+             data_hora_transacao = datetime.now(timezone.utc)
 
-
-        # --- Fluxo de Confirmação ---
-        # Formatando para exibição na mensagem de confirmação (convertendo para fuso horário local se possível)
         data_hora_local_display = None
         try:
             from zoneinfo import ZoneInfo
@@ -138,25 +124,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"Data/Hora: {data_hora_local_display}"
         )
 
-        # Armazenar os dados extraídos temporariamente no user_data
-        # Usaremos o message_id da MENSAGEM ORIGINAL DO USUÁRIO como chave
-        # Limpar dados antigos se existirem para esta chave
         stored_data_key = f"{TRANSACTION_CALLBACK_PREFIX}_data_{original_message_id}"
-        context.user_data.pop(stored_data_key, None) # Limpa dados anteriores para esta msg id
+        context.user_data.pop(stored_data_key, None) 
 
         context.user_data[stored_data_key] = {
             "user_id": user_id,
             "tipo": tipo,
-            "valor": valor, # Já é float
+            "valor": valor,
             "categoria": categoria,
             "descricao": descricao,
-            "data_hora": data_hora_transacao # Já é objeto datetime (UTC)
+            "data_hora": data_hora_transacao
         }
         logger.info(f"Dados da transação armazenados temporariamente para confirmação (key: {stored_data_key})")
 
-
-        # Criar botões inline, EMBEDINDO o original_message_id no callback_data
-        # O formato do callback data será AGORA: prefix_action_original_message_id
         keyboard = [
             [
                 InlineKeyboardButton("✅ Salvar", callback_data=f"{TRANSACTION_CALLBACK_PREFIX}_save_{original_message_id}"),
@@ -165,12 +145,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Enviar a mensagem de confirmação com botões, respondendo à mensagem original
         await update.message.reply_text(
             confirmation_message_text,
             reply_markup=reply_markup,
             parse_mode='Markdown',
-            reply_to_message_id=original_message_id # Explicitamente definir reply_to_message_id
+            reply_to_message_id=original_message_id
         )
 
 
@@ -178,25 +157,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.error(f"Erro ao preparar confirmação da transação: {e}", exc_info=True)
         await update.message.reply_text(f"Ocorreu um erro interno ao processar sua transação. Por favor, tente novamente mais tarde: {str(e)}")
     finally:
-        pass # Não salvamos no DB aqui
+        pass
 
 async def handle_transaction_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Processa o callback dos botões de confirmação da transação."""
     query = update.callback_query
-    await query.answer() # Remover o indicador de carregamento do botão
+    await query.answer()
 
-    callback_data = query.data # Ex: "trxconfirm_save_200"
+    callback_data = query.data
     user_id = str(query.from_user.id)
-    chat_id = query.message.chat_id # Chat onde a mensagem de confirmação foi enviada
-    confirmation_message_id = query.message.message_id # ID da mensagem de confirmação
+    chat_id = query.message.chat_id 
+    confirmation_message_id = query.message.message_id
 
 
     logger.info(f"Callback de confirmação recebido de {user_id}: {callback_data}")
 
-    # Extrair a ação e o original_message_id do callback_data
-    # O formato é AGORA: {prefix}_{action}_{original_message_id}
     parts = callback_data.split('_')
-    # A lista `parts` deve ter 3 elementos: ['trxconfirm', 'save' ou 'retry', 'original_message_id']
+
     if len(parts) != 3 or parts[0] != TRANSACTION_CALLBACK_PREFIX or parts[1] not in ['save', 'retry']:
         logger.error(f"Callback data inesperado ou formato inválido: {callback_data}")
         try:
@@ -205,9 +182,9 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
              logger.error(f"Erro ao enviar mensagem de erro para callback data inválido: {e_send}")
         return
 
-    action = parts[1] # 'save' ou 'retry' - AGORA É parts[1]
+    action = parts[1]
     try:
-        original_message_id = int(parts[2]) # O ID da mensagem original é a última parte - AGORA É parts[2]
+        original_message_id = int(parts[2])
     except ValueError:
          logger.error(f"Callback data inválido: ID da mensagem original não é um número: {callback_data}")
          try:
@@ -216,35 +193,33 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
               logger.error(f"Erro ao enviar mensagem de erro para callback data com ID inválido: {e_send}")
          return
 
-
-    # Recuperar os dados da transação armazenados temporariamente usando o ID da mensagem ORIGINAL como chave
     stored_data_key = f"{TRANSACTION_CALLBACK_PREFIX}_data_{original_message_id}"
-    transaction_data = context.user_data.pop(stored_data_key, None) # Remover os dados após recuperá-los
+    transaction_data = context.user_data.pop(stored_data_key, None)
 
 
     if transaction_data is None:
         logger.warning(f"Dados da transação não encontrados para a chave {stored_data_key}. Possivelmente expirou ou bot reiniciou.")
-        # Editar a mensagem original de confirmação para indicar que expirou
+
         try:
              await query.edit_message_text(
                  text="Esta confirmação expirou. Por favor, envie a transação novamente.",
-                 reply_markup=None # Remover botões
+                 reply_markup=None
              )
         except Exception as e:
              logger.error(f"Erro ao editar mensagem de confirmação expirada: {e}")
-             # Fallback para enviar nova mensagem se a edição falhar
+
              await context.bot.send_message(chat_id=chat_id, text="Esta confirmação expirou. Por favor, envie a transação novamente.")
         return
 
-    # Extrair dados recuperados
+
     tipo = transaction_data["tipo"]
     valor = transaction_data["valor"]
     categoria = transaction_data["categoria"]
     descricao = transaction_data["descricao"]
-    data_hora = transaction_data["data_hora"] # Já é objeto datetime (UTC)
+    data_hora = transaction_data["data_hora"]
 
     if action == "save":
-        # Salvar a transação no banco de dados
+
         db_session = SessionLocal()
         try:
             add_transaction(
@@ -257,15 +232,13 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
                 data_hora=data_hora
             )
 
-            # Editar a mensagem original de confirmação para mostrar que foi salva
             try:
-                # Formatação para exibição (reutilizando a lógica)
                 data_hora_local_display = None
                 try:
                     from zoneinfo import ZoneInfo
                     try:
                         sao_paulo_tz = ZoneInfo("America/Sao_Paulo")
-                        data_hora_local_display = data_hora.astimezone(sao_paulo_tz).strftime("%d/%m/%Y às %H:%M") # Corrigido erro de digitação
+                        data_hora_local_display = data_hora.astimezone(sao_paulo_tz).strftime("%d/%m/%Y às %H:%M")
                     except Exception:
                          data_hora_local_display = data_hora.strftime("%d/%m/%Y às %H:%M (UTC)")
                 except ImportError:
@@ -281,20 +254,19 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
                         f"Data/Hora: {data_hora_local_display}"
                     ),
                     parse_mode='Markdown',
-                    reply_markup=None # Remover botões após salvar
+                    reply_markup=None
                 )
                 logger.info(f"Transação salva para usuário {user_id}.")
             except Exception as e:
                  logger.error(f"Erro ao editar mensagem de confirmação salva: {e}")
-                 await context.bot.send_message(chat_id=chat_id, text="✅ Transação Salva!") # Mensagem simples de sucesso
+                 await context.bot.send_message(chat_id=chat_id, text="✅ Transação Salva!")
 
         except Exception as e:
             logger.error(f"Erro ao salvar transação no DB para {user_id}: {e}", exc_info=True)
-            # Editar a mensagem de confirmação para mostrar o erro
             try:
                  await query.edit_message_text(
                      text=f"❌ Ocorreu um erro ao tentar salvar a transação: {str(e)}\nPor favor, tente registrar novamente.",
-                     reply_markup=None # Remover botões
+                     reply_markup=None
                  )
             except Exception as e_edit:
                  logger.error(f"Erro ao editar mensagem de erro ao salvar: {e_edit}")
@@ -305,11 +277,10 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
                 db_session.close()
 
     elif action == "retry":
-        # O usuário quer tentar novamente
         try:
             await query.edit_message_text(
                 text="❌ Transação Cancelada. Por favor, descreva a transação novamente para tentar registrar.",
-                reply_markup=None # Remover botões
+                reply_markup=None
             )
             logger.info(f"Transação cancelada pelo usuário {user_id}.")
         except Exception as e:
@@ -317,26 +288,22 @@ async def handle_transaction_confirmation(update: Update, context: ContextTypes.
              await context.bot.send_message(chat_id=chat_id, text="❌ Transação Cancelada. Por favor, descreva a transação novamente.")
 
 
-# --- Funções de Saldo, Listar Transações e Estatísticas permanecem as mesmas ---
 async def saldo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     db_session = SessionLocal()
     try:
-        saldo_atual = get_saldo(db_session, user_id) # db_session será fechada em get_saldo
+        saldo_atual = get_saldo(db_session, user_id)
         await update.message.reply_text(f"Seu saldo atual é: **{format_currency(saldo_atual)}**", parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Erro ao buscar saldo para {user_id}: {e}")
         await update.message.reply_text("Não foi possível consultar seu saldo no momento. Por favor, tente novamente mais tarde.")
-    # finally: db_session é fechada em get_saldo
 
 async def listar_transacoes(update: Update, context: ContextTypes.DEFAULT_TYPE, tipo_transacao: str) -> None:
     user_id = str(update.effective_user.id)
     db_session = SessionLocal()
     try:
-        # Buscamos as transações (limitando para não ficar uma lista gigante)
-        transacoes = get_transacoes_por_tipo(db_session, user_id, tipo_transacao, limit=5) # db_session é fechada
+        transacoes = get_transacoes_por_tipo(db_session, user_id, tipo_transacao, limit=5)
 
-        # Determinamos o termo correto (despesas ou receitas) e emoji
         tipo_str_plural = "transações"
         emoji = "🧐"
         if tipo_transacao == "saída":
@@ -346,18 +313,13 @@ async def listar_transacoes(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             tipo_str_plural = "receitas recentes"
             emoji = "🤑"
 
-        # Verificamos se há transações
         if not transacoes:
             await update.message.reply_text(f"Nenhuma {tipo_str_plural} encontrada para seu usuário. {emoji}")
             return
 
-        # --- ALTERAÇÃO AQUI: Mensagem de introdução mais neutra/formal ---
         resposta = f"Suas últimas {len(transacoes)} {tipo_str_plural}:\n\n"
 
-        # Construímos a lista de transações com o novo formato
         for t in transacoes:
-            # Mantemos o código de formatação de data/hora, caso queira usá-lo
-            # para debug ou em outro lugar no futuro, mas ele não será exibido na linha.
             try:
                 from zoneinfo import ZoneInfo
                 try:
@@ -370,23 +332,15 @@ async def listar_transacoes(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                  logger.warning("Módulo 'zoneinfo' não encontrado para exibição de lista, usando UTC.")
                  data_hora_local_display = t.data_hora.strftime("%d/%m às %H:%M (UTC)")
 
-            # --- ALTERAÇÃO AQUI: Formato da linha de listagem (Categoria: Descrição - Valor) ---
-            resposta += f"- {t.categoria.capitalize()}: {t.descricao} - {format_currency(t.valor)}\n"
+            resposta += f"- {t.categoria.capitalize()}: {t.descricao} - {format_currency(t.valor)} - {data_hora_local_display}\n"
 
-        # Enviamos a lista formatada
         await update.message.reply_text(resposta)
 
     except Exception as e:
-        # Tratamento de erro durante a busca ou formatação
         logger.error(f"Erro ao listar {tipo_transacao}s para {user_id}: {e}")
         await update.message.reply_text(f"Não foi possível listar suas {tipo_str_plural} no momento.")
     finally:
-        # Garantimos que a sessão do DB é fechada
-        # db_session já é fechada em get_transacoes_por_tipo, então este bloco finally aqui
-        # é tecnicamente redundante se a exceção não ocorrer no get_transacoes_por_tipo
-        # mas pode ser útil se houver erros na formatação após a chamada do DB.
-        # Se a sessão for aberta FORA desta função, precisaríamos fechar aqui.
-        pass # Mantido por segurança, dependendo de como SessionLocal é usada em get_transacoes_por_tipo
+        pass
 
 
 async def gastos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -421,10 +375,8 @@ async def handle_stat_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return PROCESS_STAT_QUERY 
 
     db_session = SessionLocal()
-    data_summary_for_llm = "Nenhuma informação encontrada." # Default
+    data_summary_for_llm = "Nenhuma informação encontrada."
     try:
-        # query_dynamic_transactions (em database.py) é responsável por converter
-        # as strings ISO 8601 para datetime.
         results = query_dynamic_transactions(db_session, user_id, params_from_llm)
         
         operacao = params_from_llm.get("operacao", "listar_transacoes")
@@ -461,8 +413,6 @@ async def handle_stat_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 data_summary_for_llm = f"Encontrei {len(transacoes)} transação(ões). "
                 preview_limit = 3 
                 for i, t in enumerate(transacoes[:preview_limit]):
-                     # Assumindo que t.data_hora já é um objeto datetime (vindo do DB)
-                     # Convertendo para fuso horário local para exibição no resumo
                     try:
                         from zoneinfo import ZoneInfo
                         try:
@@ -478,7 +428,6 @@ async def handle_stat_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 if len(transacoes) > preview_limit:
                     data_summary_for_llm += f"E mais {len(transacoes) - preview_limit} outras."
         
-        # Chama o LLM para gerar a resposta final conversacional
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         conversational_reply = generate_conversational_response(user_query, data_summary_for_llm)
         await update.message.reply_text(conversational_reply)
@@ -523,30 +472,22 @@ def main() -> None:
     stats_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("estatisticas", estatisticas_command)],
         states={
-            # Este MessageHandler só será ativo QUANDO o usuário estiver no estado PROCESS_STAT_QUERY
             PROCESS_STAT_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_stat_query)],
         },
         fallbacks=[CommandHandler("cancelar_estatisticas", cancelar_estatisticas)],
     )
     application.add_handler(stats_conv_handler)
 
-
-
-    # Adicione o MessageHandler geral DEPOIS dos ConversationHandlers
-    # Ele só será acionado se a mensagem não for um comando E não estiver em um ConversationHandler ativo
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Add CallbackQueryHandler (A ordem relativa aos MessageHandlers gerais não costuma ser um problema)
     application.add_handler(CallbackQueryHandler(handle_transaction_confirmation, pattern=f"^{TRANSACTION_CALLBACK_PREFIX}_(save|retry)_\\d+$"))
 
-    # Adicione os outros Command Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ajuda", help_command))
     application.add_handler(CommandHandler("saldo", saldo_command))
     application.add_handler(CommandHandler("gastos", gastos_command))
     application.add_handler(CommandHandler("entradas", entradas_command))
 
-    # Add Error Handler
     application.add_error_handler(error_handler)
 
     logger.info("Bot iniciado com sucesso e pronto para receber comandos.")
